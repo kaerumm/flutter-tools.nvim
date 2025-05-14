@@ -154,7 +154,7 @@ M.flatten = vim.fn.has("nvim-0.11") == 1 and flatten or vim.tbl_flatten
 ---@generic T
 ---@param t T[]
 ---@param t2 T[]
----@param compare fun(a: T, b: T) boolean
+---@param compare fun(a: T, b: T): boolean
 function M.compare(t, t2, compare)
   if #t2 ~= #t then return false end
   for index, _ in ipairs(t) do
