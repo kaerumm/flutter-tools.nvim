@@ -53,7 +53,7 @@ end
 ---@return string
 function M.join(...)
   local result =
-    table.concat(utils.flatten({ ... }), M.path_sep):gsub(M.path_sep .. "+", M.path_sep)
+      table.concat(utils.flatten({ ... }), M.path_sep):gsub(M.path_sep .. "+", M.path_sep)
   return result
 end
 
@@ -82,6 +82,8 @@ function M.iterate_parents(path)
   return it, path, path
 end
 
+---@param root string
+---@param path string?
 function M.is_descendant(root, path)
   if not path then return false end
 

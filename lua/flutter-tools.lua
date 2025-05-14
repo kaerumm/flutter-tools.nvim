@@ -116,6 +116,20 @@ local function setup_autocommands()
     pattern = { "*" },
     callback = function() dev_tools.stop() end,
   })
+  autocmd({ "BufReadPost", "BufFilePost", "BufEnter" }, {
+    group = AUGROUP,
+    pattern = { "*.dart" },
+    callback = function()
+      lsp.attach()
+    end
+  })
+  autocmd({ "LspAttach" }, {
+    group = AUGROUP,
+    pattern = { "*.dart" },
+    callback = function()
+      lsp.dettach_if_not_descendent()
+    end
+  })
 end
 
 ---@param opts flutter.ProjectConfig

@@ -49,9 +49,10 @@ local function _flutter_sdk_dart_bin(flutter_sdk)
 end
 
 ---Get paths for flutter and dart based on the binary locations
----@return table<string, string>
+---@return table<string, string>?
 local function get_default_binaries()
   local flutter_bin = fn.resolve(fn.exepath("flutter"))
+  if #flutter_bin <= 0 then return nil end
   return {
     flutter_bin = flutter_bin,
     dart_bin = fn.resolve(fn.exepath("dart")),
@@ -66,7 +67,7 @@ function M.reset_paths() _paths = nil end
 
 ---Execute user's lookup command and pass it to the job callback
 ---@param lookup_cmd string
----@param callback fun(p: string, t: table<string, string>?)
+---@param callback fun(t: table<string, string>?)
 ---@return table<string, string>?
 local function path_from_lookup_cmd(lookup_cmd, callback)
   local paths = {}
@@ -99,9 +100,10 @@ local function path_from_lookup_cmd(lookup_cmd, callback)
   job:start()
 end
 
-local function _flutter_bin_from_fvm()
+---@param current_buffer_path string
+local function _flutter_bin_from_fvm(current_buffer_path)
   local fvm_root =
-    fs.dirname(fs.find(".fvm", { path = luv.cwd(), upward = true, type = "directory" })[1])
+      fs.dirname(fs.find(".fvm", { path = current_buffer_path, upward = true, type = "directory" })[1])
   local binary_name = path.is_windows and "flutter.bat" or "flutter"
   local flutter_bin_symlink = path.join(fvm_root, ".fvm", "flutter_sdk", "bin", binary_name)
   flutter_bin_symlink = fn.exepath(flutter_bin_symlink)
@@ -110,12 +112,13 @@ local function _flutter_bin_from_fvm()
 end
 
 ---Fetch the paths to the users binaries.
+---@param current_buffer_path string
 ---@param callback fun(paths: table<string, string>)
 ---@return nil
-function M.get(callback)
+function M.get(current_buffer_path, callback)
   if _paths then return callback(_paths) end
   if config.fvm then
-    local flutter_bin = _flutter_bin_from_fvm()
+    local flutter_bin = _flutter_bin_from_fvm(current_buffer_path)
     if flutter_bin then
       _paths = {
         flutter_bin = flutter_bin,
@@ -144,8 +147,9 @@ function M.get(callback)
     end)
   end
 
-  if not _paths then
-    _paths = get_default_binaries()
+  local paths = get_default_binaries()
+  if not _paths and paths then
+    _paths = paths
     _paths.dart_sdk = _dart_sdk_root(_paths)
     if _paths.flutter_sdk then _paths.dart_bin = _flutter_sdk_dart_bin(_paths.flutter_sdk) end
   end

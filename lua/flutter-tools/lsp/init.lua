@@ -200,7 +200,7 @@ function M.dart_lsp_super()
       uri = vim.uri_from_bufnr(0), -- gets URI of current buffer
     },
     position = {
-      line = lsp_line, -- 0-based line number
+      line = lsp_line,     -- 0-based line number
       character = lsp_col, -- 0-based character position
     },
   }
@@ -209,13 +209,16 @@ end
 
 function M.dart_reanalyze() lsp.buf_request(0, "dart/reanalyze") end
 
+---@param current_buffer_path string
 ---@param user_config table
 ---@param callback fun(table)
-local function get_server_config(user_config, callback)
+local function get_server_config(current_buffer_path, user_config, callback)
   local config = utils.merge({ name = lsp_utils.SERVER_NAME }, user_config, { "color" })
   local executable = require("flutter-tools.executable")
+  executable.reset_paths()
   --- TODO: if a user specifies a command we do not need to call executable.get
-  executable.get(function(paths)
+  executable.get(current_buffer_path, function(paths)
+    if paths == nil then return end
     local defaults = get_defaults({ flutter_sdk = paths.flutter_sdk })
     local root_path = paths.dart_sdk
     local debug_log = create_debug_log(user_config.debug)
@@ -232,6 +235,12 @@ local function get_server_config(user_config, callback)
 
     config.on_init = function(client, _)
       return client.notify("workspace/didChangeConfiguration", { settings = config.settings })
+    end
+    config.on_exit = function()
+      -- vim.schedule does not work, it executes attach too soon and
+      -- instead of creating a new client, the lsp implementation tries
+      -- to use the old, stopped client.
+      vim.defer_fn(M.attach, 0)
     end
     callback(config)
   end)
@@ -255,18 +264,43 @@ function M.attach()
   debug_log("attaching LSP")
 
   local buf = api.nvim_get_current_buf()
+  if lsp_utils.get_dartls_client(buf) ~= nil then return end
+
   local buffer_path = api.nvim_buf_get_name(buf)
 
   if not is_valid_path(buffer_path) then return end
 
-  get_server_config(user_config, function(c)
+  get_server_config(buffer_path, user_config, function(c)
     c.root_dir = M.get_lsp_root_dir()
-      or fs.dirname(fs.find(conf.root_patterns, {
-        path = buffer_path,
-        upward = true,
-      })[1])
+        or fs.dirname(fs.find(conf.root_patterns, {
+          path = buffer_path,
+          upward = true,
+        })[1])
     vim.lsp.start(c)
   end)
+end
+
+function M.dettach_if_not_descendent()
+  local buf = api.nvim_get_current_buf()
+  local client = lsp_utils.get_dartls_client(buf)
+
+  if client == nil then return M.attach() end
+  if client.is_stopped() then return end
+
+  local buffer_path = api.nvim_buf_get_name(buf)
+  if not is_valid_path(buffer_path) then return end
+
+  local root_path = client.root_dir
+  if (root_path ~= nil) then
+    root_path = vim.loop.fs_realpath(root_path)
+    if not path.is_descendant(root_path, buffer_path) then
+      -- This stop will eventually trigger a LspNotify event
+      -- We have an autocmd setup such that on LspNotify Exit we try to
+      -- attach the lsp client again
+      vim.notify("Detaching")
+      client.stop()
+    end
+  end
 end
 
 return M
