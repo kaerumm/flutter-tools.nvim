@@ -294,11 +294,20 @@ function M.dettach_if_not_descendent()
   if (root_path ~= nil) then
     root_path = vim.loop.fs_realpath(root_path)
     if not path.is_descendant(root_path, buffer_path) then
-      -- This stop will eventually trigger a LspNotify event
-      -- We have an autocmd setup such that on LspNotify Exit we try to
-      -- attach the lsp client again
-      vim.notify("Detaching")
-      client.stop()
+      local conf = require("flutter-tools.config")
+      local user_config = conf.lsp
+      get_server_config(buffer_path, user_config, function(c)
+        if utils.islist(client.config.cmd) and utils.islist(c.cmd) then
+          local same_cmd = utils.compare(client.config.cmd, c.cmd, function(a, b)
+            return a == b;
+          end)
+          if same_cmd then return end
+          -- This stop will eventually trigger a LspNotify event
+          -- We have an autocmd setup such that on LspNotify Exit we try to
+          -- attach the lsp client again
+          client.stop()
+        end
+      end)
     end
   end
 end
