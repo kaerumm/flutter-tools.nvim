@@ -123,13 +123,6 @@ local function setup_autocommands()
       lsp.attach()
     end
   })
-  autocmd({ "LspAttach" }, {
-    group = AUGROUP,
-    pattern = { "*.dart" },
-    callback = function()
-      lsp.dettach_if_not_descendent()
-    end
-  })
 end
 
 ---@param opts flutter.ProjectConfig

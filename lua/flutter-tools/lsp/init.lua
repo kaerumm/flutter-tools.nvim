@@ -279,33 +279,4 @@ function M.attach()
   end)
 end
 
-function M.dettach_if_not_descendent()
-  local buf = api.nvim_get_current_buf()
-  local client = lsp_utils.get_dartls_client(buf)
-
-  -- The client is already rescheduled to reattach
-  if not client or client:is_stopped() and M.pending_reattach then return end
-
-  local buffer_path = api.nvim_buf_get_name(buf)
-  if not lsp_utils.is_valid_path(buffer_path) then return end
-
-  local conf = require("flutter-tools.config")
-  local user_config = conf.lsp
-
-  local fvm_root = fvm_utils.find_fvm_root()
-
-  get_server_config(user_config, function(_, paths)
-    local old_flutter_bin = fvm_utils.flutter_bin_from_fvm(paths.fvm_root)
-    local new_flutter_bin = fvm_utils.flutter_bin_from_fvm(fvm_root)
-    if old_flutter_bin == new_flutter_bin then
-      return
-    end
-    -- This stop will eventually trigger a LspNotify event
-    -- We have an autocmd setup such that on LspNotify Exit we try to
-    -- attach the lsp client again if there is a pending reattach
-    M.pending_reattach = true
-    client.stop()
-  end)
-end
-
 return M

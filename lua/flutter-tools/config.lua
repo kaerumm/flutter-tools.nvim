@@ -2,7 +2,6 @@ local lazy = require("flutter-tools.lazy")
 local path = lazy.require("flutter-tools.utils.path") ---@module "flutter-tools.utils.path"
 local ui = lazy.require("flutter-tools.ui") ---@module "flutter-tools.ui"
 local utils = lazy.require("flutter-tools.utils") ---@module "flutter-tools.utils"
-local lsp = lazy.require("flutter-tools.lsp") ---@module "flutter-tools.utils"
 
 ---@class flutter.ProjectConfig
 ---@field name? string
