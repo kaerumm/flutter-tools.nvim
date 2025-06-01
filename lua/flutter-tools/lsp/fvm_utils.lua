@@ -3,7 +3,7 @@ local M = {}
 local lazy = require("flutter-tools.lazy")
 
 local fn = vim.fn
-local luv = vim.luv
+local luv = vim.loop
 
 local lsp_utils = lazy.require("flutter-tools.lsp.utils") ---@module "flutter-tools.lsp.utils"
 local path = lazy.require("flutter-tools.utils.path") ---@module "flutter-tools.utils.path"
