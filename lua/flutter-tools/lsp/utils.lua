@@ -1,13 +1,15 @@
 local M = {}
 
+local lazy = require("flutter-tools.lazy")
+
 local lsp = vim.lsp
+
+local get_clients = vim.fn.has("nvim-0.10") == 1 and lsp.get_clients or lsp.get_active_clients
+local utils = lazy.require("flutter-tools.utils") ---@module "flutter-tools.utils"
 
 M.SERVER_NAME = "dartls"
 
 -- TODO: Remove after compatibility with Neovim=0.9 is dropped
-local get_clients = vim.fn.has("nvim-0.10") == 1 and lsp.get_clients or lsp.get_active_clients
-local lazy = require("flutter-tools.lazy")
-local utils = lazy.require("flutter-tools.utils") ---@module "flutter-tools.utils"
 
 ---@param bufnr number?
 ---@return vim.lsp.Client?
@@ -17,6 +19,8 @@ function M.get_dartls_client(bufnr)
 end
 
 --- Checks if buffer path is valid for attaching LSP
+--- @param buffer_path string
+--- @return boolean
 function M.is_valid_path(buffer_path)
   if buffer_path == "" then return false end
 

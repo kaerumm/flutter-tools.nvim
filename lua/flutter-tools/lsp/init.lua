@@ -166,9 +166,16 @@ function M.restart()
 end
 
 ---@return string?
-function M.get_lsp_root_dir()
-  local client = lsp_utils.get_dartls_client()
-  return client and client.config.root_dir or nil
+function M.get_project_root_dir()
+  local conf = require("flutter-tools.config")
+  local current_buffer_path = lsp_utils.current_buffer_path_if_valid()
+
+  if (current_buffer_path == nil) then
+    local client = lsp_utils.get_dartls_client()
+    return client and client.config.root_dir or nil
+  end
+
+  return path.find_root(conf.root_patterns, current_buffer_path) or current_buffer_path
 end
 
 -- FIXME: I'm not sure how to correctly wait till a server is ready before
@@ -210,7 +217,7 @@ end
 function M.dart_reanalyze() lsp.buf_request(0, "dart/reanalyze") end
 
 ---@param user_config table
----@param callback fun(table)
+---@param callback fun(table, table)
 local function get_server_config(user_config, callback)
   local config = utils.merge({ name = lsp_utils.SERVER_NAME }, user_config, { "color" })
   local executable = require("flutter-tools.executable")
@@ -235,13 +242,15 @@ local function get_server_config(user_config, callback)
     config.on_init = function(client, _)
       return client.notify("workspace/didChangeConfiguration", { settings = config.settings })
     end
+    -- TODO: flag something such that we only call attach on exit that has been flagged to
+    -- re attach.
     config.on_exit = function()
       -- vim.schedule does not work, it executes attach too soon and
       -- instead of creating a new client, the lsp implementation tries
       -- to use the old, stopped client.
       vim.defer_fn(M.attach, 0)
     end
-    callback(config)
+    callback(config, paths)
   end)
 end
 
@@ -259,12 +268,9 @@ function M.attach()
 
   if not lsp_utils.is_valid_path(buffer_path) then return end
 
-  get_server_config(user_config, function(c)
-    c.root_dir = M.get_lsp_root_dir()
-        or fs.dirname(fs.find(conf.root_patterns, {
-          path = buffer_path,
-          upward = true,
-        })[1])
+  get_server_config(user_config, function(c, paths)
+    c.root_dir = paths.fvm_dir
+        or M.get_project_root_dir()
     vim.lsp.start(c)
   end)
 end
@@ -273,32 +279,26 @@ function M.dettach_if_not_descendent()
   local buf = api.nvim_get_current_buf()
   local client = lsp_utils.get_dartls_client(buf)
 
-  if client == nil then return M.attach() end
+  if client == nil then return end
   if client.is_stopped() then return end
 
   local buffer_path = api.nvim_buf_get_name(buf)
   if not lsp_utils.is_valid_path(buffer_path) then return end
 
-  local root_path = client.root_dir
-  if (root_path ~= nil) then
-    root_path = vim.loop.fs_realpath(root_path)
-    if not path.is_descendant(root_path, buffer_path) then
-      local conf = require("flutter-tools.config")
-      local user_config = conf.lsp
-      get_server_config(user_config, function(c)
-        if utils.islist(client.config.cmd) and utils.islist(c.cmd) then
-          local same_cmd = utils.compare(client.config.cmd, c.cmd, function(a, b)
-            return a == b;
-          end)
-          if same_cmd then return end
-          -- This stop will eventually trigger a LspNotify event
-          -- We have an autocmd setup such that on LspNotify Exit we try to
-          -- attach the lsp client again
-          client.stop()
-        end
+  local conf = require("flutter-tools.config")
+  local user_config = conf.lsp
+  get_server_config(user_config, function(c)
+    if utils.islist(client.config.cmd) and utils.islist(c.cmd) then
+      local same_cmd = utils.compare(client.config.cmd, c.cmd, function(a, b)
+        return a == b;
       end)
+      if same_cmd then return end
+      -- This stop will eventually trigger a LspNotify event
+      -- We have an autocmd setup such that on LspNotify Exit we try to
+      -- attach the lsp client again
+      client.stop()
     end
-  end
+  end)
 end
 
 return M
