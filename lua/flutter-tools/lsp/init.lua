@@ -3,11 +3,11 @@ local utils = lazy.require("flutter-tools.utils") ---@module "flutter-tools.util
 local path = lazy.require("flutter-tools.utils.path") ---@module "flutter-tools.utils.path"
 local color = lazy.require("flutter-tools.lsp.color") ---@module "flutter-tools.lsp.color"
 local lsp_utils = lazy.require("flutter-tools.lsp.utils") ---@module "flutter-tools.lsp.utils"
+local fvm_utils = lazy.require("flutter-tools.lsp.fvm_utils") ---@module "flutter-tools.lsp.fvm_utils"
 
 local api = vim.api
 local lsp = vim.lsp
 local fmt = string.format
-local fs = vim.fs
 
 local FILETYPE = "dart"
 
@@ -245,6 +245,10 @@ local function get_server_config(user_config, callback)
     -- TODO: flag something such that we only call attach on exit that has been flagged to
     -- re attach.
     config.on_exit = function()
+      if not M.pending_reattach then
+        return
+      end
+      M.pending_reattach = false
       -- vim.schedule does not work, it executes attach too soon and
       -- instead of creating a new client, the lsp implementation tries
       -- to use the old, stopped client.
@@ -279,25 +283,28 @@ function M.dettach_if_not_descendent()
   local buf = api.nvim_get_current_buf()
   local client = lsp_utils.get_dartls_client(buf)
 
-  if client == nil then return end
-  if client.is_stopped() then return end
+  -- The client is already rescheduled to reattach
+  if not client or client:is_stopped() and M.pending_reattach then return end
 
   local buffer_path = api.nvim_buf_get_name(buf)
   if not lsp_utils.is_valid_path(buffer_path) then return end
 
   local conf = require("flutter-tools.config")
   local user_config = conf.lsp
-  get_server_config(user_config, function(c)
-    if utils.islist(client.config.cmd) and utils.islist(c.cmd) then
-      local same_cmd = utils.compare(client.config.cmd, c.cmd, function(a, b)
-        return a == b;
-      end)
-      if same_cmd then return end
-      -- This stop will eventually trigger a LspNotify event
-      -- We have an autocmd setup such that on LspNotify Exit we try to
-      -- attach the lsp client again
-      client.stop()
+
+  local fvm_root = fvm_utils.find_fvm_root()
+
+  get_server_config(user_config, function(_, paths)
+    local old_flutter_bin = fvm_utils.flutter_bin_from_fvm(paths.fvm_root)
+    local new_flutter_bin = fvm_utils.flutter_bin_from_fvm(fvm_root)
+    if old_flutter_bin == new_flutter_bin then
+      return
     end
+    -- This stop will eventually trigger a LspNotify event
+    -- We have an autocmd setup such that on LspNotify Exit we try to
+    -- attach the lsp client again if there is a pending reattach
+    M.pending_reattach = true
+    client.stop()
   end)
 end
 

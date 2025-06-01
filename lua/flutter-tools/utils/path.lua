@@ -83,9 +83,10 @@ function M.iterate_parents(path)
   return it, path, path
 end
 
----@param root string
+---@param root string?
 ---@param path string?
 function M.is_descendant(root, path)
+  if not root then return false end
   if not path then return false end
 
   local function cb(dir, _) return dir == root end
