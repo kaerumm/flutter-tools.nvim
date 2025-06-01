@@ -209,15 +209,14 @@ end
 
 function M.dart_reanalyze() lsp.buf_request(0, "dart/reanalyze") end
 
----@param current_buffer_path string
 ---@param user_config table
 ---@param callback fun(table)
-local function get_server_config(current_buffer_path, user_config, callback)
+local function get_server_config(user_config, callback)
   local config = utils.merge({ name = lsp_utils.SERVER_NAME }, user_config, { "color" })
   local executable = require("flutter-tools.executable")
   executable.reset_paths()
   --- TODO: if a user specifies a command we do not need to call executable.get
-  executable.get(current_buffer_path, function(paths)
+  executable.get(function(paths)
     if paths == nil then return end
     local defaults = get_defaults({ flutter_sdk = paths.flutter_sdk })
     local root_path = paths.dart_sdk
@@ -246,16 +245,6 @@ local function get_server_config(current_buffer_path, user_config, callback)
   end)
 end
 
---- Checks if buffer path is valid for attaching LSP
-local function is_valid_path(buffer_path)
-  if buffer_path == "" then return false end
-
-  local start_index, _, uri_prefix = buffer_path:find("^(%w+://).*")
-  -- Do not attach LSP if file URI prefix is not file.
-  -- For example LSP will not be attached for diffview:// or fugitive:// buffers.
-  return not start_index or uri_prefix == "file://"
-end
-
 ---This was heavily inspired by nvim-metals implementation of the attach functionality
 function M.attach()
   local conf = require("flutter-tools.config")
@@ -268,9 +257,9 @@ function M.attach()
 
   local buffer_path = api.nvim_buf_get_name(buf)
 
-  if not is_valid_path(buffer_path) then return end
+  if not lsp_utils.is_valid_path(buffer_path) then return end
 
-  get_server_config(buffer_path, user_config, function(c)
+  get_server_config(user_config, function(c)
     c.root_dir = M.get_lsp_root_dir()
         or fs.dirname(fs.find(conf.root_patterns, {
           path = buffer_path,
@@ -288,7 +277,7 @@ function M.dettach_if_not_descendent()
   if client.is_stopped() then return end
 
   local buffer_path = api.nvim_buf_get_name(buf)
-  if not is_valid_path(buffer_path) then return end
+  if not lsp_utils.is_valid_path(buffer_path) then return end
 
   local root_path = client.root_dir
   if (root_path ~= nil) then
@@ -296,7 +285,7 @@ function M.dettach_if_not_descendent()
     if not path.is_descendant(root_path, buffer_path) then
       local conf = require("flutter-tools.config")
       local user_config = conf.lsp
-      get_server_config(buffer_path, user_config, function(c)
+      get_server_config(user_config, function(c)
         if utils.islist(client.config.cmd) and utils.islist(c.cmd) then
           local same_cmd = utils.compare(client.config.cmd, c.cmd, function(a, b)
             return a == b;

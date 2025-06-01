@@ -16,4 +16,14 @@ function M.get_dartls_client(bufnr)
   return utils.find(clients, function(c) return not c:is_stopped() end)
 end
 
+--- Checks if buffer path is valid for attaching LSP
+function M.is_valid_path(buffer_path)
+  if buffer_path == "" then return false end
+
+  local start_index, _, uri_prefix = buffer_path:find("^(%w+://).*")
+  -- Do not attach LSP if file URI prefix is not file.
+  -- For example LSP will not be attached for diffview:// or fugitive:// buffers.
+  return not start_index or uri_prefix == "file://"
+end
+
 return M

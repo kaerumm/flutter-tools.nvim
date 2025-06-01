@@ -3,8 +3,10 @@ local utils = lazy.require("flutter-tools.utils") ---@module "flutter-tools.util
 local path = lazy.require("flutter-tools.utils.path") ---@module "flutter-tools.utils.path"
 local ui = lazy.require("flutter-tools.ui") ---@module "flutter-tools.ui"
 local config = lazy.require("flutter-tools.config") ---@module "flutter-tools.config"
+local lsp_utils = lazy.require("flutter-tools.lsp.utils") ---@module "flutter-tools.lsp.utils"
 local Job = require("plenary.job")
 
+local api = vim.api
 local fn = vim.fn
 local fs = vim.fs
 local luv = vim.loop
@@ -100,10 +102,14 @@ local function path_from_lookup_cmd(lookup_cmd, callback)
   job:start()
 end
 
----@param current_buffer_path string
-local function _flutter_bin_from_fvm(current_buffer_path)
+local function _flutter_bin_from_fvm()
+  local current_buffer = api.nvim_get_current_buf()
+  local current_buffer_path = api.nvim_buf_get_name(current_buffer)
+  local search_path = lsp_utils.is_valid_path(current_buffer_path) and
+      current_buffer_path or luv.cwd()
+
   local fvm_root =
-      fs.dirname(fs.find(".fvm", { path = current_buffer_path, upward = true, type = "directory" })[1])
+      fs.dirname(fs.find(".fvm", { path = search_path, upward = true, type = "directory" })[1])
   local binary_name = path.is_windows and "flutter.bat" or "flutter"
   local flutter_bin_symlink = path.join(fvm_root, ".fvm", "flutter_sdk", "bin", binary_name)
   flutter_bin_symlink = fn.exepath(flutter_bin_symlink)
@@ -112,13 +118,12 @@ local function _flutter_bin_from_fvm(current_buffer_path)
 end
 
 ---Fetch the paths to the users binaries.
----@param current_buffer_path string
 ---@param callback fun(paths: table<string, string>)
 ---@return nil
-function M.get(current_buffer_path, callback)
+function M.get(callback)
   if _paths then return callback(_paths) end
   if config.fvm then
-    local flutter_bin = _flutter_bin_from_fvm(current_buffer_path)
+    local flutter_bin = _flutter_bin_from_fvm()
     if flutter_bin then
       _paths = {
         flutter_bin = flutter_bin,
