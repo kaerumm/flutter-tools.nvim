@@ -5,6 +5,7 @@ local config = lazy.require("flutter-tools.config") ---@module "flutter-tools.co
 local utils = lazy.require("flutter-tools.utils") ---@module "flutter-tools.utils"
 local path = lazy.require("flutter-tools.utils.path") ---@module "flutter-tools.utils.path"
 local vm_service_extensions = lazy.require("flutter-tools.runners.vm_service_extensions") ---@module "flutter-tools.runners.vm_service_extensions"
+local lsp = lazy.require("flutter-tools.lsp") ---@module "flutter-tools.lsp"
 local success, dap = pcall(require, "dap")
 if not success then
   ui.notify(string.format("nvim-dap is not installed!\n%s", dap), ui.ERROR)
@@ -137,8 +138,8 @@ local function register_dap_listeners(on_run_data, on_run_exit)
   end
 
   dap.listeners.before["event_flutter.serviceExtensionStateChanged"][plugin_identifier] = function(
-    _,
-    body
+      _,
+      body
   )
     if body and body.extension and body.value then
       vm_service_extensions.set_service_extensions_state(body.extension, body.value)
@@ -147,15 +148,15 @@ local function register_dap_listeners(on_run_data, on_run_exit)
 end
 
 function DebuggerRunner:run(
-  opts,
-  paths,
-  args,
-  cwd,
-  on_run_data,
-  on_run_exit,
-  is_flutter_project,
-  project_config,
-  last_launch_config
+    opts,
+    paths,
+    args,
+    cwd,
+    on_run_data,
+    on_run_exit,
+    is_flutter_project,
+    project_config,
+    last_launch_config
 )
   vm_service_extensions.reset()
   ---@type dap.Configuration
@@ -184,7 +185,8 @@ function DebuggerRunner:run(
   else
     register_default_configurations(paths, is_flutter_project, project_config)
     if config.debugger.register_configurations then
-      config.debugger.register_configurations(paths)
+      local project_dir = lsp.get_project_root_dir()
+      config.debugger.register_configurations(paths, project_dir)
     end
     local all_configurations = require("dap").configurations.dart
     if not all_configurations then
@@ -241,7 +243,10 @@ function DebuggerRunner:attach(paths, args, cwd, on_run_data, on_run_exit)
   local launch_configurations = {}
   local launch_configuration_count = 0
   register_default_configurations(paths, true)
-  if config.debugger.register_configurations then config.debugger.register_configurations(paths) end
+  if config.debugger.register_configurations then
+    local project_dir = lsp.get_project_root_dir()
+    config.debugger.register_configurations(paths, project_dir)
+  end
   local all_configurations = require("dap").configurations.dart
   if not all_configurations then
     ui.notify("No launch configuration for DAP found", ui.ERROR)
