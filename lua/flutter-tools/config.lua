@@ -27,19 +27,24 @@ local utils = lazy.require("flutter-tools.utils") ---@module "flutter-tools.util
 ---@field flutter? table|string -- options applied to `flutter run` command
 ---@field dart? table|string -- options appliert to `dart run` command
 ---
+---@class flutter.FVMConfig
+---@field enabled? boolean -- Whether to use FVM (Flutter Version Manager)
+---@field fvm_root_patterns? string[]
+---
 ---@class flutter.Config
 ---@field flutter_path? string Path to the Flutter SDK
 ---@field flutter_lookup_cmd? string Command to find Flutter SDK
 ---@field pre_run_callback? fun(opts: table) Function called before running Flutter
 ---@field root_patterns? string[] Patterns to find project root
----@field fvm? boolean Whether to use FVM (Flutter Version Manager)
+---@field fvm? flutter.FVMConfig
 ---@field default_run_args? flutter.RunArgsOpts Default options for run command
 ---@field widget_guides? {enabled: boolean, debug: boolean}
 ---@field ui? {border: string}
 ---@field decorations? {statusline: {app_version: boolean, device: boolean, project_config: boolean}}
 ---@field debugger? {enabled: boolean, exception_breakpoints?: table, evaluate_to_string_in_debug_views?: boolean, register_configurations?: fun(paths: table)}
 ---@field closing_tags? {highlight: string, prefix: string, priority: number, enabled: boolean}
----@field lsp? {debug?: number, color?: {enabled: boolean, background: boolean, foreground: boolean, virtual_text: boolean, virtual_text_str: string, background_color?: string}, settings?: table}
+---@field lsp? {debug?: number, color?: {enabled: boolean, background: boolean, foreground: boolean, virtual_text: boolean, virtual_text_str: string, background_color?: string}, settings?: table, reattach_on_lsp_exit?: boolean }
+---
 ---@field outline? {auto_open: boolean, open_cmd?: string}
 ---@field dev_log? flutter.DevLogOpts
 ---@field dev_tools? {autostart: boolean, auto_open_browser: boolean}
@@ -101,7 +106,10 @@ local config = {
   flutter_lookup_cmd = get_default_lookup(),
   pre_run_callback = nil,
   root_patterns = { ".git", "pubspec.yaml" },
-  fvm = false,
+  fvm = {
+    enabled = false,
+    fvm_root_patterns = { ".fvm" },
+  },
   default_run_args = nil,
   widget_guides = {
     enabled = false,
@@ -138,6 +146,7 @@ local config = {
       virtual_text_str = "■",
       background_color = nil,
     },
+    reattach_on_lsp_exit = true,
   },
   outline = setmetatable({
     auto_open = false,

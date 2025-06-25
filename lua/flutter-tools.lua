@@ -101,20 +101,29 @@ local function setup_autocommands()
     pattern = { "*.dart" },
     callback = function() commands.reload(true) end,
   })
+
   autocmd({ "BufWritePost" }, {
     group = AUGROUP,
     pattern = { "*/pubspec.yaml" },
     callback = function() commands.pub_get() end,
   })
+
   autocmd({ "BufEnter" }, {
     group = AUGROUP,
     pattern = { log.filename },
     callback = function() log.__resurrect() end,
   })
+
   autocmd({ "VimLeavePre" }, {
     group = AUGROUP,
     pattern = { "*" },
     callback = function() dev_tools.stop() end,
+  })
+
+  autocmd({ "BufReadPost", "BufFilePost", "BufEnter" }, {
+    group = AUGROUP,
+    pattern = { "*.dart" },
+    callback = function() lsp.attach() end,
   })
 end
 

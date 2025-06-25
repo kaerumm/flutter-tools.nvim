@@ -8,10 +8,11 @@ local lsp_utils = lazy.require("flutter-tools.lsp.utils") ---@module "flutter-to
 local api = vim.api
 local lsp = vim.lsp
 local fmt = string.format
-local fs = vim.fs
 
 local FILETYPE = "dart"
 
+---@class LSPInitModule
+---@field lsps table<string, { client_id: integer, initialized: boolean, attach_on_init: { buf: integer, project_root: string }[] }>
 local M = {
   lsps = {},
 }
@@ -198,7 +199,7 @@ function M.dart_lsp_super()
     return
   end
   -- Get current cursor position (1-based)
-  local line, col = unpack(vim.api.nvim_win_get_cursor(0))
+  local line, col = unpack(api.nvim_win_get_cursor(0))
 
   -- Note: line is 1-based but col is 0-based
   -- To make line 0-based for LSP, subtract 1:
@@ -219,7 +220,7 @@ end
 function M.dart_reanalyze() lsp.buf_request(0, "dart/reanalyze") end
 
 ---@param user_config table
----@param callback fun(table)
+---@param callback fun(table, table)
 local function get_server_config(user_config, callback)
   local config = utils.merge({ name = lsp_utils.SERVER_NAME }, user_config, { "color" })
   local executable = require("flutter-tools.executable")
@@ -253,23 +254,30 @@ local function get_server_config(user_config, callback)
 
     config.on_init = function(client, _)
       if vim.fn.has("nvim-0.12") == 0 then
-        return client.notify("workspace/didChangeConfiguration", { settings = config.settings })
+        client.notify("workspace/didChangeConfiguration", { settings = config.settings })
       else
-        return client:notify("workspace/didChangeConfiguration", { settings = config.settings })
+        client:notify("workspace/didChangeConfiguration", { settings = config.settings })
       end
+
+      local lsp_entry = M._get_lsp_entry(paths.dart_bin)
+      assert(lsp_entry ~= nil, "LSPEntry should not be nil during on init")
+
+      for _, entry in ipairs(lsp_entry.attach_on_init) do
+        if api.nvim_buf_is_valid(entry.buf) then
+          M._attach_buffer_and_add_workspace_folder(client, entry.buf, entry.project_root)
+        end
+      end
+
+      lsp_entry.initialized = true
     end
-    callback(config)
+
+    config.on_exit = function()
+      M._delete_lsp_entry(paths.dart_bin)
+      M.attach()
+    end
+
+    callback(config, paths)
   end)
-end
-
---- Checks if buffer path is valid for attaching LSP
-local function is_valid_path(buffer_path)
-  if buffer_path == "" then return false end
-
-  local start_index, _, uri_prefix = buffer_path:find("^(%w+://).*")
-  -- Do not attach LSP if file URI prefix is not file.
-  -- For example LSP will not be attached for diffview:// or fugitive:// buffers.
-  return not start_index or uri_prefix == "file://"
 end
 
 ---This was heavily inspired by nvim-metals implementation of the attach functionality
@@ -280,18 +288,93 @@ function M.attach()
   debug_log("attaching LSP")
 
   local buf = api.nvim_get_current_buf()
+
+  if not lsp_utils.is_buf_valid(buf) then return end
+
+  local key = "dart_lsp_attaching"
+
+  local success, attaching = pcall(vim.api.nvim_buf_get_var, buf, key)
+  if success and attaching == true then return end
+  vim.api.nvim_buf_set_var(buf, key, true)
+
   local buffer_path = api.nvim_buf_get_name(buf)
 
-  if not is_valid_path(buffer_path) then return end
+  if not lsp_utils.is_valid_path(buffer_path) then
+    return vim.api.nvim_buf_set_var(buf, key, false)
+  end
 
-  get_server_config(user_config, function(c)
-    c.root_dir = M.get_project_root_dir()
-      or fs.dirname(fs.find(conf.root_patterns, {
-        path = buffer_path,
-        upward = true,
-      })[1])
-    vim.lsp.start(c)
+  get_server_config(user_config, function(c, paths)
+    vim.api.nvim_buf_set_var(buf, key, false)
+
+    if lsp_utils.is_excluded_path(paths.fvm_versions_directory, paths.flutter_sdk, buffer_path) then
+      return
+    end
+
+    local project_root = M.get_project_root_dir()
+
+    local root_dir = paths.fvm_dir or project_root
+    c.root_dir = root_dir
+
+    if M._get_lsp_entry(paths.dart_bin) == nil then
+      local id = vim.lsp.start(c)
+      M._get_or_create_lsp_entry(paths.dart_bin, id)
+    end
+
+    M._attach_buffer(paths.dart_bin, buf, project_root)
   end)
+end
+
+---@param dart_bin string
+function M._get_lsp_entry(dart_bin) return M.lsps[dart_bin] end
+
+---@param dart_bin string
+---@param client_id integer
+function M._get_or_create_lsp_entry(dart_bin, client_id)
+  if M.lsps[dart_bin] == nil then
+    M.lsps[dart_bin] = {
+      client_id = client_id,
+      initialized = false,
+      attach_on_init = {},
+    }
+  end
+  return M.lsps[dart_bin]
+end
+
+---@param dart_bin string
+function M._delete_lsp_entry(dart_bin) M.lsps[dart_bin] = nil end
+
+---@param dart_bin string
+function M._delete_attach_list(dart_bin)
+  local lsp_entry = M._get_lsp_entry(dart_bin)
+  if lsp_entry == nil then return end
+  lsp_entry.attach_on_init = {}
+end
+
+---@param dart_bin string
+---@param buf integer
+---@param project_root string
+function M._attach_buffer(dart_bin, buf, project_root)
+  local lsp_entry = M._get_lsp_entry(dart_bin)
+  if lsp_entry == nil then return end
+  if lsp_entry.initialized then
+    local client = lsp_utils.get_dartls_client_with_id(lsp_entry.client_id)
+    if client == nil then return end
+    M._attach_buffer_and_add_workspace_folder(client, buf, project_root)
+    return
+  end
+  local attach_entry = { buf = buf, project_root = project_root }
+  table.insert(lsp_entry.attach_on_init, attach_entry)
+end
+
+---@param buf integer
+---@param client vim.lsp.Client
+---@param project_root string
+function M._attach_buffer_and_add_workspace_folder(client, buf, project_root)
+  lsp.buf_attach_client(buf, client.id)
+  for _, folder in pairs(client.workspace_folders or {}) do
+    if folder.name == project_root then return end
+  end
+  client:_add_workspace_folder(project_root)
 end
 
 return M
